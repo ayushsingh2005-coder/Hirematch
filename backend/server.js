@@ -2,7 +2,12 @@
 // connect with mongoDB 
 
 import app from "./src/app.js";
+import dns from "node:dns";
 import connecttoDB from "./src/config/database.js";
+
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
+
+connecttoDB();
 
 app.get('/', (req, res) => {
   res.send('Hello, server is working!');
