@@ -18,9 +18,9 @@ import {
 
 const authRoute = Router();
 
-authRoute.post('/register', validateRegister, register);
 authRoute.post('/send-otp', validateSendOtp, sendOtp);
 authRoute.post('/verify-otp', validateVerifyOtp, verifyOtp);
+authRoute.post('/register', validateRegister, register);
 authRoute.post('/resend-otp', validateSendOtp, resendOtp);
 authRoute.post('/login', validateLogin, login);
 authRoute.post('/logout', authMiddleware, logout);

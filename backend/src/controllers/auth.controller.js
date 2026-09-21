@@ -127,6 +127,7 @@ export async function register(req, res) {
       email,
       password,
       role: role || 'candidate',
+      
     });
 
     await redis.del(`otp:signup:${email}`);
@@ -143,13 +144,13 @@ export async function register(req, res) {
           username: user.username,
           email: user.email,
           role: user.role,
-          isAccountVerified: user.isAccountVerified,
+          
         },
       },
       201
     );
   } catch (error) {
-    console.error('Register error:', error.message);
+    console.error('Register error:', error);
     return errorResponse(res, 'Internal server error', 500);
   }
 }
@@ -182,7 +183,6 @@ export async function login(req, res) {
         username: user.username,
         email: user.email,
         role: user.role,
-        isAccountVerified: user.isAccountVerified,
       },
     });
   } catch (error) {
@@ -213,7 +213,7 @@ export async function getProfile(req, res) {
       username: user.username,
       email: user.email,
       role: user.role,
-      isAccountVerified: user.isAccountVerified,
+      
     });
   } catch (error) {
     console.error('Profile error:', error.message);

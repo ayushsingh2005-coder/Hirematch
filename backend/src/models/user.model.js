@@ -33,10 +33,7 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    isAccountVerified: {
-      type: Boolean,
-      default: false,
-    },
+    
     resetOtp: {
       type: String,
       default: '',
@@ -63,10 +60,10 @@ userSchema.methods.generateAuthToken = function () {
 };
 
 // function for hash the password
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
+userSchema.pre('save', async function () {
+  if (!this.isModified('password')) return;
   this.password = await bcrypt.hash(this.password, 10);
-  next();
+  
 });
 
 

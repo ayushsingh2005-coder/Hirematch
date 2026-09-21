@@ -7,7 +7,7 @@ export default async function sendEmail({ to, subject, html }) {
   }
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM || 'noreply@hirematch.com',
+    from: process.env.SENDER_EMAIL,
     to,
     subject,
     html,
