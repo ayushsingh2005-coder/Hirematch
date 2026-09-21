@@ -26,4 +26,6 @@ authRoute.post('/login', validateLogin, login);
 authRoute.post('/logout', authMiddleware, logout);
 authRoute.get('/profile', authMiddleware, getProfile);
 
+
+
 export default authRoute;

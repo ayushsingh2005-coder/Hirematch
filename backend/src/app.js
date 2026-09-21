@@ -7,6 +7,11 @@ const app = express();
 app.use(express.json());
 app.use(morgan('dev'));
 
+//user auth routes
 app.use('/api/auth' , authRoute);
+
+//resume routes
+app.use('/api/resume' ,resumeRoutes );
+
 
 export default app;
