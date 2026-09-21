@@ -1,242 +1,120 @@
-# Hirematch Authentication Implementation Guide
+# Hirematch Backend
 
-This document explains the authentication flow implemented in the Hirematch backend, from OTP request to login and profile access.
+Hirematch is being built as a recruitment platform connecting candidates and recruiters. The backend currently establishes the user account and authentication foundation. Resume upload and resume parsing are the next feature being wired into the platform.
 
----
+## Current progress
 
-## 1. Project overview
+### Implemented
 
-The authentication module is built to support:
+- Express server with JSON parsing and request logging
+- MongoDB connection through Mongoose
+- User accounts with `candidate` and `recruiter` roles
+- Password hashing with bcrypt
+- Email signup verification with a six-digit OTP
+- OTP expiry and temporary storage in Upstash Redis
+- JWT login tokens with a 24-hour expiry
+- Protected profile and logout routes
+- JWT blacklist support in Redis after logout
+- Email delivery through Nodemailer and Brevo SMTP
+- Consistent success and error API responses
 
-- Email signup with OTP verification
-- User registration after OTP validation
-- Login with JWT token generation
-- Protected routes using auth middleware
-- Logout with token blacklist support
-- Redis-based temporary OTP storage
-- Email sending through SMTP using Nodemailer
+### In progress: resumes
 
-The backend is organized as follows:
+The initial resume infrastructure is present:
 
-- `server.js` → starts the Express server and connects MongoDB
-- `src/app.js` → mounts the auth routes
-- `src/controllers/auth.controller.js` → business logic for auth
-- `src/models/user.model.js` → MongoDB user schema and password/JWT methods
-- `src/routes/auth.user.js` → endpoint definitions
-- `src/middleware/auth.middleware.js` → JWT validation middleware
-- `src/middleware/validate.middleware.js` → request validation rules
-- `src/config/redis.js` → Upstash Redis client
-- `src/config/nodemailer.js` → SMTP transporter
-- `src/utils/*` → OTP generation, email delivery, API responses
+- Cloudinary configuration in `src/config/cloudinary.js`
+- PDF-only Multer storage in `src/config/multer.js`
+- A 5 MB upload limit
+- A resume schema containing the user, Cloudinary URL, file metadata, and extracted text
+- Initial resume routes for upload and fetching
 
----
+The resume controller still needs to be implemented. The intended flow is:
 
-## 2. Full authentication flow
+1. Authenticate the user and receive a PDF through Multer.
+2. Upload the PDF to Cloudinary as a raw resource.
+3. Extract text from the PDF with `pdf-parse`.
+4. Upsert the user's resume document in MongoDB.
+5. Return the stored resume details.
 
-### Step 1: Send OTP to email
+## Backend structure
 
-Route:
+- `server.js` starts the server and connects to MongoDB.
+- `src/app.js` configures Express and mounts API routes.
+- `src/controllers/` contains authentication and resume business logic.
+- `src/models/` contains the User and Resume MongoDB schemas.
+- `src/routes/` defines authentication and resume endpoints.
+- `src/middleware/` contains JWT authentication and request validation.
+- `src/config/` contains MongoDB, Redis, SMTP, Cloudinary, and Multer setup.
+- `src/utils/` contains OTP generation, email delivery, and API response helpers.
 
-- `POST /api/auth/send-otp`
+## Running the backend
 
-Logic:
-
-1. Receive `email` from the request.
-2. Run validation to ensure it is a valid email.
-3. Check whether email already exists in MongoDB.
-4. Generate a 6-digit OTP.
-5. Store OTP in Redis under a key like `otp:signup:<email>` with TTL 300 seconds.
-6. Send the OTP to the user email using Nodemailer.
-7. Return a success response.
-
-Example response:
-
-```json
-{
-  "success": true,
-  "message": "OTP sent successfully to email",
-  "data": {
-    "email": "user@example.com"
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-### Step 2: Verify OTP
+The server uses port `3000` by default. Set `PORT` to use another port.
 
-Route:
+The following environment variables are required:
 
-- `POST /api/auth/verify-otp`
-
-Logic:
-
-1. Receive `email` and `otp`.
-2. Read the Redis key `otp:signup:<email>`.
-3. If the key is missing, response is `OTP expired or invalid`.
-4. Compare the submitted OTP with the stored OTP.
-5. If valid, update Redis data with `verified: true`.
-6. Return success message.
-
-This step is required before registration is allowed.
-
-### Step 3: Register user
-
-Route:
-
-- `POST /api/auth/register`
-
-Logic:
-
-1. Validate username, email, password, and optional role.
-2. Check whether the user already exists by email or username.
-3. Fetch the OTP record from Redis for the email.
-4. Confirm the OTP was verified.
-5. Create the new user in MongoDB.
-6. Delete the OTP from Redis after successful registration.
-7. Generate JWT token.
-8. Return the token and user data.
-
-Example response:
-
-```json
-{
-  "success": true,
-  "message": "User registered successfully",
-  "data": {
-    "token": "jwt_token_here",
-    "user": {
-      "id": "mongo_id",
-      "username": "john",
-      "email": "john@example.com",
-      "role": "candidate"
-    }
-  }
-}
+```env
+MONGODB_URI=your_mongodb_connection_string
+UPSTASH_REDIS_REST_URL=your_upstash_redis_url
+UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_token
+JWT_SECRET=your_jwt_secret
+SMTP_USER=your_smtp_username
+SMTP_PASS=your_smtp_password
+SENDER_EMAIL=your_sender_email
+CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
+CLOUDINARY_API_KEY=your_cloudinary_api_key
+CLOUDINARY_API_SECRET=your_cloudinary_api_secret
 ```
 
-### Step 4: Login
+`MONGODB_URI`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` are checked during configuration startup.
 
-Route:
+## Authentication API
 
-- `POST /api/auth/login`
+All authentication routes are under `/api/auth`.
 
-Logic:
+| Method | Endpoint | Auth | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/send-otp` | No | Send a signup OTP to an unused email |
+| `POST` | `/verify-otp` | No | Verify the signup OTP |
+| `POST` | `/resend-otp` | No | Send a replacement signup OTP |
+| `POST` | `/register` | No | Create a user after OTP verification |
+| `POST` | `/login` | No | Authenticate with email and password |
+| `GET` | `/profile` | Bearer token | Fetch the authenticated user's profile |
+| `POST` | `/logout` | Bearer token | Blacklist the current JWT |
 
-1. Receive `email` and `password`.
-2. Fetch user with password selected explicitly because the schema uses `select: false` for password.
-3. Compare the supplied password with the stored bcrypt hash.
-4. If valid, generate a JWT token.
-5. Return token and user details.
+Protected requests use:
 
-### Step 5: Protected access
-
-Routes:
-
-- `GET /api/auth/profile`
-- `POST /api/auth/logout`
-
-Middleware:
-
-- `authMiddleware`
-
-The middleware does the following:
-
-1. Reads the `Authorization` header.
-2. Extracts the JWT token.
-3. Checks whether the token is blacklisted in Redis.
-4. Verifies the JWT signature using `JWT_SECRET`.
-5. Validates that the user still exists in MongoDB.
-6. Attaches the user object to `req.user`.
-7. Allows access to the protected route.
-
-For logout, the token is added to Redis with a blacklist key such as:
-
-- `blacklist:<token>`
-
-This prevents the token from being reused.
-
----
-
-## 3. Redis usage in this backend
-
-The backend uses Upstash Redis to temporarily store OTPs and blacklist tokens.
-
-### Important Redis keys
-
-- `otp:signup:<email>`
-  - Stores the OTP for signup
-  - Example value:
-
-```json
-{ "otp": "123456", "verified": false }
+```http
+Authorization: Bearer <jwt>
 ```
 
-- `blacklist:<token>`
-  - Stores invalidated JWTs when a user logs out
+### Signup flow
 
-### Why Redis is used here
+1. `POST /api/auth/send-otp` stores an OTP in Redis for five minutes and sends it by email.
+2. `POST /api/auth/verify-otp` marks the OTP as verified.
+3. `POST /api/auth/register` creates the user, removes the OTP record, and returns a JWT.
 
-Redis is used because OTPs are temporary and should expire quickly. It is better than storing verification data in MongoDB for short-lived email flows.
+OTP records use the key `otp:signup:<email>`. Logged-out tokens use `blacklist:<token>` and are retained for 24 hours.
 
-### TTL configuration
+## Resume API status
 
-- OTP TTL: 300 seconds (5 minutes)
-- Blacklisted token TTL: 86400 seconds (24 hours)
+The intended resume endpoints are mounted under `/api/resume`:
 
-### Redis file behavior
+| Method | Endpoint | Intended purpose |
+| --- | --- | --- |
+| `POST` | `/upload` | Upload and parse a candidate PDF resume |
+| `GET` | `/fetchresume` | Fetch the authenticated user's resume |
 
-The file `src/config/redis.js` creates an Upstash client with:
+These endpoints are not complete yet. The route/controller wiring and authentication behavior must be finished before they are available for use.
 
-- URL from `UPSTASH_REDIS_REST_URL`
-- Token from `UPSTASH_REDIS_REST_TOKEN`
-- `automaticDeserialization: false`
+## Important implementation note
 
-This is useful because the code stores JSON strings explicitly and reads them manually.
-
----
-
-## 4. Email sending setup
-
-The backend uses Nodemailer with Brevo (SendinBlue) SMTP relay.
-
-File:
-
-- `src/config/nodemailer.js`
-
-The transporter is configured with:
-
-- `host: smtp-relay.brevo.com`
-- `port: 587`
-- SMTP credentials from environment variables
-
-The utility file `src/utils/sendEmail.js` sends the actual email message.
-
----
-
-## 5. JWT and password handling
-
-### Password hashing
-
-The user model uses bcrypt before saving the password.
-
-### JWT generation
-
-Every user has a method:
-
-- `generateAuthToken()`
-
-This generates a JWT with:
-
-- user id
-- role
-- expiry: 24 hours
-
-### Compare password
-
-The model also includes:
-
-- `comparePassword(password)`
-
-This compares the entered password to the hashed version in MongoDB.
+The resume route is currently scaffolded but not fully wired: `src/app.js` and `src/routes/resume.routes.js` still need their resume imports and controller handlers connected. Until that work is completed, the authentication implementation is the usable part of the backend.
 
 ---
 
@@ -408,7 +286,5 @@ The backend is functioning as a proper OTP-based auth system, but it still depen
 ---
 
 ## 11. Final note
-
-This project is now aligned with the same general working pattern used in the Zuno authentication flow, but adapted to the current Hirematch codebase structure and ESM setup.
 
 If environment credentials are valid, the authentication flow will work correctly.
