@@ -1,6 +1,7 @@
 import express from 'express';
 import morgan from 'morgan';
 import authRoute from './routes/auth.user.js';
+import resumeRoutes from './routes/resume.routes.js';
 
 const app = express();
 
