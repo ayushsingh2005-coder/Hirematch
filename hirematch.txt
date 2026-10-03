@@ -1,0 +1,28 @@
+Step 1 → Resume Upload + Parse 
+         (PDF → rawText → MongoDB)
+              ↓
+Step 2 → JD Upload + Parse  
+         (Company JD → structured JSON → MongoDB)
+              ↓
+Step 3 → Candidate Profile Extraction
+         (rawText → LLM → structured JSON)
+              ↓
+Step 4 → Requirement Matching Engine
+         (Hard Gate + Weighted Score)
+              ↓
+Step 5 → Eligibility Result
+         (Explainable — kya mila, kya nahi)
+              ↓
+Step 6 → Apply / Blocked + Roadmap
+              ↓
+Step 7 → Report + Interview Questions
+         (Technical + Behavioural)
+
+CORE USP 
+
+MODEL needs to be created 
+Resume        → rawText, fileUrl, userId 
+JobDescription → rawText, structured JSON, companyId  
+CandidateProfile → extracted structured data from resume
+MatchResult   → score, gate result, breakdown, eligible
+Application   → candidateId, jobId, matchResultId

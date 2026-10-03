@@ -6,6 +6,7 @@ const resumeSchema = new mongoose.Schema({
         type : mongoose.Schema.Types.ObjectId,
         ref : "User",
         required: true,
+        unique : true
     },
     fileUrl : {
         type: String,
@@ -21,12 +22,15 @@ const resumeSchema = new mongoose.Schema({
     rawText : {
         type : String,
         required : true
-    }
-
     },
+    publicId: {
+    type: String,
+    required: true  // Cloudinary public_id — delete ke liye zaroori
+    }
+},
     { timestamps: true }
 );
 
 
-const resume = mongoose.models.resume || mongoose.model('resume', resumeSchema);
-export default resume;
+const Resume = mongoose.models.Resume || mongoose.model('Resume', resumeSchema);
+export default Resume;

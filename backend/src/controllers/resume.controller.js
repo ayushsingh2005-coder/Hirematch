@@ -1,77 +1,88 @@
-// req.file aayega Multer se (Cloudinary pe already upload ho chuka hoga)
-//       ↓
-// pdf-parse se rawText extract karenge (req.file.path se)
-//       ↓
-// findOneAndUpdate se MongoDB mein save karenge (upsert)
-//       ↓
-// Response bhejenge
-
-
+import Resume from "../models/resume.model.js";
 import cloudinary from "../config/cloudinary.js";
-import upload from "../config/multer.js";
-import { PDFParse } from 'pdf-parse';
-import { uploadToCloudinary } from "../utils/uploadToCloudinary.js";
-import resume from "../models/resume.model.js";
+import { PDFParse } from "pdf-parse";
 
-export async function uploadResume(req,res){
-    try {
-
-         console.log("🔥 CONTROLLER REACHED");
-
-    console.log("BODY:", req.body);
-    console.log("FILE:", req.file);
-        
-        const file = req.file;
-
-        if(!file){
-            res.status(400).json({
-                success : false,
-                message : "File is required",
-                error : "File is required"
-            })
-        }
-
-        const previousResume = await resume.find({userId : req.user._id});
-
-        if(previousResume){
-            const previousResumeUrl = previousResume.fileUrl;
-            const public_id = `resume_${req.user._id}`;
-            await cloudinary.uploader.destroy(public_id);
-        }
-
-        // extracting raw text from pdf file (raw) 
-        const pdfData = await  PDFParse(file.buffer);
-        const  rawText = pdfData.text;
-    
-        //uploading file to cloudinary 
-        const cloudinaryResult = await uploadToCloudinary(req.user._id);
-        const fileUrl = cloudinaryResult.secure_url;
-
-        const documentResume = await resume.findOneAndUpdate(
-        { userId: req.user._id },
-    {
-        userId: req.user._id,
-        fileUrl: fileUrl,
-        fileName: file.originalname,
-        fileSize: file.size,
-        rawText: rawText,
-    },
-        { upsert: true, new: true }
+const uploadToCloudinary = (buffer, userId) => {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder: "hirematch/resumes",
+                resource_type: "raw",
+                public_id: `resume_${userId}.pdf`,
+                overwrite: true,
+                invalidate: true,
+            },
+            (error, result) => {
+                if (error) return reject(error);
+                resolve(result);
+            }
         );
 
-        // Resume (jo ki updated hai iska use karke iska analysis karyenge frontend pe for user )
+        stream.end(buffer);
+    });
+};
+
+export async function resumeUpload(req, res) {
+    try {
+        const file = req.file;
+
+        if (!file) {
+            return res.status(400).json({
+                success: false,
+                message: "Please upload a PDF file up to 5MB",
+            });
+        }
+
+        // extract text from PDF
+        const parser = new PDFParse({ data: file.buffer });
+        let rawText;
+
+        try {
+            const pdfData = await parser.getText();
+            rawText = pdfData.text;
+        } finally {
+            await parser.destroy();
+        }
+
+        if (!rawText || rawText.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "Could not extract text from PDF. Please upload a valid resume.",
+            });
+        }
+
+        // upload to cloudinary (same public_id overwrites the old resume)
+        const cloudinaryResult = await uploadToCloudinary(file.buffer, req.user._id);
+
+        // save to MongoDB
+        const resume = await Resume.findOneAndUpdate(
+            { userId: req.user._id },
+            {
+                userId: req.user._id,
+                fileUrl: cloudinaryResult.secure_url,
+                publicId: cloudinaryResult.public_id,
+                fileName: file.originalname,
+                fileSize: file.size,
+                rawText,
+            },
+            { upsert: true, new: true }
+        );
 
         return res.status(200).json({
-            success : true,
-            updatedResume : documentResume,
-            message : "Ready for AI analysis"
-        })
-        
-
+            success: true,
+            message: "Resume uploaded successfully",
+            resume: {
+                fileUrl: resume.fileUrl,
+                fileName: resume.fileName,
+                fileSize: resume.fileSize,
+                uploadedAt: resume.updatedAt,
+            },
+        });
     } catch (error) {
-        res.status(500).json({
-            success : false,
-            message : "Internal server Error",
-            error : error
-        })
-}}
+        return res.status(500).json({
+            success: false,
+            message: "Resume upload failed",
+            error: error.message,
+        });
+    }
+}
